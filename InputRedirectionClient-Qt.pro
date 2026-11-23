@@ -6,10 +6,16 @@
 
 QT       += core gui network gamepad
 
-unix|win32-g++ {
+unix {
     CONFIG += link_pkgconfig
     PKGCONFIG += sdl2
     DEFINES += ENABLE_SDL_PRO3
+}
+
+win32-g++ {
+    DEFINES += ENABLE_SDL_PRO3 SDL_MAIN_HANDLED
+    INCLUDEPATH += "$$[QT_INSTALL_PREFIX]/include/SDL2"
+    LIBS += -lSDL2
 }
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets

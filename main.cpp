@@ -2,6 +2,10 @@
 #define _USE_MATH_DEFINES
 #endif
 
+#if defined(_WIN32) && defined(ENABLE_SDL_PRO3)
+#include <SDL.h>
+#endif
+
 #include "mainwidget.h"
 #include "gpmanager.h"
 #include <QTimer>
@@ -9,6 +13,10 @@
 
 int main(int argc, char *argv[])
 {
+    #if defined(_WIN32) && defined(ENABLE_SDL_PRO3)
+    SDL_SetMainReady();
+    #endif
+
     QApplication a(argc, argv);
     a.setApplicationDisplayName(QStringLiteral("Input Redirection Gyro Edition"));
     Widget w;
