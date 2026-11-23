@@ -42,10 +42,12 @@ jobs:
             make
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-angleproject
             mingw-w64-ucrt-x86_64-qt5-base
             mingw-w64-ucrt-x86_64-qt5-gamepad
             mingw-w64-ucrt-x86_64-qt5-tools
             mingw-w64-ucrt-x86_64-SDL2
+
       - name: Build and bundle
         run: |
           mkdir build
