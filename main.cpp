@@ -10,10 +10,19 @@
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
+    a.setApplicationDisplayName(QStringLiteral("Input Redirection Gyro Edition"));
     Widget w;
     GamepadMonitor m(&w);
 
     w.show();
+#ifdef ENABLE_SDL_PRO3
+    // SDL polling and Qt gamepad callbacks share the UI thread.
+    QTimer timer;
+    timer.setTimerType(Qt::PreciseTimer);
+    QObject::connect(&timer, &QTimer::timeout, &worker, &Worker::sendFrame);
+    timer.start(10);
+    return a.exec();
+#else
     QThread* thread = new QThread();
     QTimer timer;
     timer.setInterval(20);
@@ -29,4 +38,5 @@ int main(int argc, char *argv[])
     a.exec();
     worker.closeThread();
     return 0;
+#endif
 }

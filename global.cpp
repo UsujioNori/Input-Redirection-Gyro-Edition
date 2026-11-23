@@ -1,6 +1,10 @@
 #include "global.h"
 #include <math.h>
 #include "gpmanager.h"
+#ifdef ENABLE_SDL_PRO3
+#include "pro3motion.h"
+#include <QDebug>
+#endif
 
 QSettings settings("TuxSH", "InputRedirectionClient-Qt");
 
@@ -130,6 +134,42 @@ void Worker::sendFrame(void)
                 irButtonsState |= 1 << (i + 1);
     }
 
+    u32 specialButtons = interfaceButtons;
+    MyAxis cppAxis = rightAxis;
+    MyAxis cpadAxis = leftAxis;
+#ifdef ENABLE_SDL_PRO3
+    Pro3MotionFrame pro3;
+    auto &controller = selectedSdlController();
+    if (controller.read(pro3)) {
+        const bool mappedSdl = !controller.usesPro3Mapping();
+        if (mappedSdl) {
+            hidPad = 0xfff;
+            specialButtons = 0;
+        }
+        cppAxis.x = pro3.rightX;
+        cppAxis.y = -yAxisMultiplierCpp * pro3.rightY;
+        if (btnSettings.isShouldSwapStick()) {
+            cpadAxis.x = pro3.rightX;
+            cpadAxis.y = -yAxisMultiplier * pro3.rightY;
+            cppAxis.x = pro3.leftX;
+            cppAxis.y = -yAxisMultiplierCpp * pro3.leftY;
+        }
+        if (btnSettings.isCStickDisabled())
+            cppAxis.x = cppAxis.y = 0;
+        irButtonsState = (pro3.zr ? 2u : 0u) | (pro3.zl ? 4u : 0u);
+        if (mappedSdl) {
+            cpadAxis.x = btnSettings.isShouldSwapStick() ? pro3.rightX : pro3.leftX;
+            cpadAxis.y = -yAxisMultiplier *
+                (btnSettings.isShouldSwapStick() ? pro3.rightY : pro3.leftY);
+            irButtonsState |= (pro3.extraButtons >> 11) & 6u;
+            specialButtons |= (pro3.extraButtons >> 14) & 1u;
+        } else if (!btnSettings.isMonsterHunterCamera()) {
+            hidPad |= 0xF0u;
+        }
+        hidPad &= ~((pro3.standardButtons | pro3.dpad | pro3.extraButtons) & 0xfffu);
+    }
+#endif
+
     u32 touchScreenState = 0x2000000;
     u32 circlePadState = 0x7ff7ff;
     u32 cppState = 0x80800081;
@@ -145,23 +185,23 @@ void Worker::sendFrame(void)
         touchScreenState = (1 << 24) | (y << 12) | x;
     }
 
-    if(leftAxis.x != 0.0 || leftAxis.y != 0.0)
+    if(cpadAxis.x != 0.0 || cpadAxis.y != 0.0)
       {
-          u32 x = (u32)(leftAxis.x * CPAD_BOUND + 0x800);
-          u32 y = (u32)(leftAxis.y * CPAD_BOUND + 0x800);
-          x = x >= 0xfff ? (leftAxis.x < 0.0 ? 0x000 : 0xfff) : x;
-          y = y >= 0xfff ? (leftAxis.y < 0.0 ? 0x000 : 0xfff) : y;
+          u32 x = (u32)(cpadAxis.x * CPAD_BOUND + 0x800);
+          u32 y = (u32)(cpadAxis.y * CPAD_BOUND + 0x800);
+          x = x >= 0xfff ? (cpadAxis.x < 0.0 ? 0x000 : 0xfff) : x;
+          y = y >= 0xfff ? (cpadAxis.y < 0.0 ? 0x000 : 0xfff) : y;
 
           circlePadState = (y << 12) | x;
       }
 
-      if(rightAxis.x != 0.0 || rightAxis.y != 0.0 || irButtonsState != 0)
+      if(cppAxis.x != 0.0 || cppAxis.y != 0.0 || irButtonsState != 0)
       {
-          // We have to rotate the c-stick position 45°. Thanks, Nintendo.
-          u32 x = (u32)(M_SQRT1_2 * (rightAxis.x + rightAxis.y) * CPP_BOUND + 0x80);
-          u32 y = (u32)(M_SQRT1_2 * (rightAxis.y - rightAxis.x) * CPP_BOUND + 0x80);
-          x = x >= 0xff ? (rightAxis.x < 0.0 ? 0x00 : 0xff) : x;
-          y = y >= 0xff ? (rightAxis.y < 0.0 ? 0x00 : 0xff) : y;
+          // Direct axis mapping: bypass the original 45-degree CPP rotation.
+          u32 x = (u32)(cppAxis.x * CPP_BOUND + 0x80);
+          u32 y = (u32)(cppAxis.y * CPP_BOUND + 0x80);
+          x = x >= 0xff ? (cppAxis.x < 0.0 ? 0x00 : 0xff) : x;
+          y = y >= 0xff ? (cppAxis.y < 0.0 ? 0x00 : 0xff) : y;
 
           cppState = (y << 24) | (x << 16) | (irButtonsState << 8) | 0x81;
       }
@@ -171,8 +211,107 @@ void Worker::sendFrame(void)
       qToLittleEndian(touchScreenState, (uchar *)ba.data() + 4);
       qToLittleEndian(circlePadState, (uchar *)ba.data() + 8);
       qToLittleEndian(cppState, (uchar *)ba.data() + 12);
-      qToLittleEndian(interfaceButtons, (uchar *)ba.data() + 16);
-      QUdpSocket().writeDatagram(ba, QHostAddress(ipAddress), 4950);
+      qToLittleEndian(specialButtons, (uchar *)ba.data() + 16);
+#ifdef ENABLE_SDL_PRO3
+      static const auto accelMode = [] {
+          const auto override = qgetenv("INPUTREDIRECTION_PRO3_ACCEL");
+          return override.isEmpty() ? QByteArray("coherent") : override;
+      }();
+      static Pro3Gravity gravity;
+      const auto motionTime = Pro3Gravity::Clock::now();
+      if (accelMode == "coherent" && !pro3.hasGyro)
+          gravity.update(pro3, motionTime);
+      if (pro3.hasGyro) {
+          if (accelMode == "off") {
+              // Use the controller's front tilt as horizontal aim.
+              static const double tiltGain = [] {
+                  bool valid = false;
+                  const double value = qgetenv("INPUTREDIRECTION_PRO3_TILT_GAIN").toDouble(&valid);
+                  return valid && std::isfinite(value)
+                      ? std::max(-2.0, std::min(2.0, value)) : 1.0;
+              }();
+              const double tilt = -pro3.gyroZ * tiltGain;
+              pro3.gyroZ = std::lround(std::max(-32767.0, std::min(32767.0, tilt)));
+              pro3.gyroY = 0;
+          }
+          static const double accelBlend = [] {
+              bool valid = false;
+              const double requested = qgetenv("INPUTREDIRECTION_PRO3_ACCEL").toDouble(&valid);
+              return valid && std::isfinite(requested)
+                  ? std::max(0.0, std::min(1.0, requested)) : 0.35;
+          }();
+          static Pro3MotionFrame neutral;
+          if (accelMode == "hold" && pro3.hasAccel) {
+              static Pro3MotionFrame heldTilt;
+              static auto lastMovement = std::chrono::steady_clock::now();
+              const auto now = std::chrono::steady_clock::now();
+              const bool moving = pro3.gyroX || pro3.gyroY || pro3.gyroZ;
+              if (moving)
+                  lastMovement = now;
+              if (!heldTilt.hasAccel || now - lastMovement <= std::chrono::milliseconds(50))
+                  heldTilt = pro3;
+              pro3.accelX = heldTilt.accelX;
+              pro3.accelY = heldTilt.accelY;
+              pro3.accelZ = heldTilt.accelZ;
+          } else if (accelMode == "off" || (!pro3.hasAccel && accelMode != "coherent")) {
+              // Keep remote acceleration active to avoid using console tilt.
+              pro3.hasAccel = true;
+              pro3.accelX = pro3.accelY = pro3.accelZ = 0;
+          } else if (accelMode != "live" && accelMode != "coherent") {
+              const int x = pro3.accelX, y = pro3.accelY, z = pro3.accelZ;
+              const int lengthSquared = x * x + y * y + z * z;
+              if (!neutral.hasAccel && lengthSquared >= 400 * 400 &&
+                  lengthSquared <= 625 * 625) {
+                  neutral = pro3;
+                  qInfo("Pro 3 motion: neutral pose captured, accel blend %.2f", accelBlend);
+              }
+              if (neutral.hasAccel) {
+                  pro3.accelX = std::lround(neutral.accelX + accelBlend * (x - neutral.accelX));
+                  pro3.accelY = std::lround(neutral.accelY + accelBlend * (y - neutral.accelY));
+                  pro3.accelZ = std::lround(neutral.accelZ + accelBlend * (z - neutral.accelZ));
+              }
+          }
+          static const bool zeroTest = qgetenv("PRO3_ZERO_GYRO_TEST") == "1";
+          static const auto zeroAt = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+          if (zeroTest && pro3.hasAccel && std::chrono::steady_clock::now() >= zeroAt) {
+              static bool reported = false;
+              if (!reported) {
+                  qInfo("Pro 3 test: gyro now zero, accelerometer still live");
+                  reported = true;
+              }
+              pro3.gyroX = pro3.gyroY = pro3.gyroZ = 0;
+          }
+          if (accelMode == "coherent")
+              gravity.update(pro3, motionTime);
+          ba.resize(pro3.hasAccel ? 40 : 32);
+          ba.replace(20, 4, "GYR1", 4);
+          qToLittleEndian<u16>(pro3.gyroX, reinterpret_cast<uchar *>(ba.data()) + 24);
+          qToLittleEndian<u16>(pro3.gyroY, reinterpret_cast<uchar *>(ba.data()) + 26);
+          qToLittleEndian<u16>(pro3.gyroZ, reinterpret_cast<uchar *>(ba.data()) + 28);
+          qToLittleEndian<u16>(0, reinterpret_cast<uchar *>(ba.data()) + 30);
+          if (pro3.hasAccel) {
+              qToLittleEndian<u16>(pro3.accelX, reinterpret_cast<uchar *>(ba.data()) + 32);
+              qToLittleEndian<u16>(pro3.accelY, reinterpret_cast<uchar *>(ba.data()) + 34);
+              qToLittleEndian<u16>(pro3.accelZ, reinterpret_cast<uchar *>(ba.data()) + 36);
+              qToLittleEndian<u16>(0, reinterpret_cast<uchar *>(ba.data()) + 38);
+          }
+      }
+#endif
+      const auto sent = QUdpSocket().writeDatagram(ba, QHostAddress(ipAddress), 4950);
+#ifdef ENABLE_SDL_PRO3
+      static bool reportedAccel = false;
+      if (ba.size() == 40 && sent == 40 && !reportedAccel) {
+          qInfo("Pro 3 motion: sending gyro and accelerometer packets");
+          reportedAccel = true;
+      }
+      static bool reportedGyro = false;
+      if (ba.size() == 32 && sent == 32 && !reportedGyro) {
+          qInfo("Pro 3 gyro: sending 32-byte motion packets");
+          reportedGyro = true;
+      }
+#else
+      (void)sent;
+#endif
 }
 
 QGamepadManager::GamepadButton variantToButton(QVariant variant)

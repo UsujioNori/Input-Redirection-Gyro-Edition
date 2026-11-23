@@ -1,10 +1,13 @@
 #include "configwindow.h"
 #include "gpmanager.h"
+#ifdef ENABLE_SDL_PRO3
+#include "pro3motion.h"
+#endif
 
 ConfigWindow::ConfigWindow(QWidget *parent, TouchScreen *ts) : QDialog(parent)
 {
     this->setWindowFlags(Qt::CustomizeWindowHint | Qt::WindowTitleHint | Qt::WindowCloseButtonHint);
-    this->setWindowTitle(tr("InputRedirectionClient-Qt - Button Config"));
+    this->setWindowTitle(tr("Button Config"));
 
     comboBoxA = populateItems(variantToButton(settings.value("ButtonA", QGamepadManager::ButtonA)));
     comboBoxB = populateItems(variantToButton(settings.value("ButtonB", QGamepadManager::ButtonB)));
@@ -341,4 +344,50 @@ QVariant ConfigWindow::currentData(QComboBox *comboBox)
     variant = comboBox->itemData(comboBox->currentIndex());
 
     return variant;
+}
+
+void ConfigWindow::refreshControllerBindings()
+{
+    for (auto *widget : extraBindingWidgets)
+        delete widget;
+    extraBindingWidgets.clear();
+    int visibleCount = 0;
+#ifdef ENABLE_SDL_PRO3
+    auto &controller = selectedSdlController();
+    if (controller.updateConnection()) {
+        const bool mappedSdl = !controller.usesPro3Mapping();
+        const char *pro3Names[] = {"L4", "R4", "PL", "PR"};
+        const char *labels[] = {"A", "B", "Select", "Start", "D-pad Right",
+            "D-pad Left", "D-pad Up", "D-pad Down", "R", "L", "X", "Y", "ZR", "ZL", "HOME"};
+        const int count = mappedSdl ? sizeof(sdlExtraButtons) / sizeof(sdlExtraButtons[0]) : 4;
+        for (int i = 0; i < count; ++i) {
+            if (mappedSdl && !controller.hasMappedButton(sdlExtraButtons[i].button))
+                continue;
+            const QString key = mappedSdl
+                ? QStringLiteral("SdlPad/") + QString::fromLatin1(sdlExtraButtons[i].key)
+                : QStringLiteral("Pro3/") + QString::fromLatin1(pro3Names[i]);
+            const QString label = mappedSdl ? QString::fromLatin1(sdlExtraButtons[i].label)
+                : tr("Pro 3 %1").arg(QString::fromLatin1(pro3Names[i]));
+            auto *binding = new QComboBox(this);
+            binding->addItem(tr("Unbound"), 0u);
+            for (unsigned bit = 0; bit < (mappedSdl ? 15u : 12u); ++bit)
+                binding->addItem(QString::fromLatin1(labels[bit]), 1u << bit);
+            binding->setCurrentIndex(qMax(0, binding->findData(settings.value(key, 0u))));
+            auto *caption = new QLabel(label, this);
+            const int row = 21 + visibleCount / 2;
+            const int column = (visibleCount % 2) * 2;
+            layout->addWidget(caption, row, column);
+            layout->addWidget(binding, row, column + 1);
+            extraBindingWidgets.append(caption);
+            extraBindingWidgets.append(binding);
+            ++visibleCount;
+            connect(saveButton, &QPushButton::pressed, binding, [key, binding] {
+                settings.setValue(key, binding->currentData().toUInt());
+            });
+        }
+    }
+#endif
+    layout->removeWidget(saveButton);
+    layout->addWidget(saveButton, 21 + (visibleCount + 1) / 2, 1, 1, 2);
+    adjustSize();
 }

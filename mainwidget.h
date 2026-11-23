@@ -160,6 +160,7 @@ public:
         {
             if (!settingsConfig->isVisible())
             {
+                settingsConfig->refreshControllerBindings();
                 settingsConfig->move(this->x() - settingsConfig->width() - 5,this->y());
                 settingsConfig->show();
             } else settingsConfig->hide();
@@ -180,7 +181,7 @@ public:
 
         touchScreen = new TouchScreen(nullptr);
         settingsConfig = new ConfigWindow(nullptr, touchScreen);
-        this->setWindowTitle(tr("InputRedirectionClient-Qt"));
+        this->setWindowTitle(tr("Input Redirection Gyro Edition"));
 
         addrLineEdit->setText(settings.value("ipAddress", "").toString());
     }

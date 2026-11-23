@@ -4,6 +4,7 @@
 #include "global.h"
 #include "touchscreen.h"
 #include <QComboBox>
+#include <QList>
 
 class ConfigWindow : public QDialog
 {
@@ -17,6 +18,7 @@ private:
                 *comboBoxPower, *comboBoxPowerLong;
 
     QPushButton *saveButton;
+    QList<QWidget *> extraBindingWidgets;
 
     QCheckBox   *invertYCheckbox, *invertYCppCheckbox, *swapSticksCheckbox,
                 *mhCameraCheckbox, *rsSmashCheckbox,
@@ -30,6 +32,7 @@ private:
     QVariant currentData(QComboBox *comboBox);
 
 public:
+    void refreshControllerBindings();
     ConfigWindow(QWidget *parent = nullptr, TouchScreen *ts = nullptr);
 };
 

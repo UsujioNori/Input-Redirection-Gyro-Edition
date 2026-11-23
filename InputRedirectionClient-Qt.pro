@@ -6,9 +6,15 @@
 
 QT       += core gui network gamepad
 
+unix:!macx {
+    CONFIG += link_pkgconfig
+    PKGCONFIG += sdl2
+    DEFINES += ENABLE_SDL_PRO3
+}
+
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
-TARGET = InputRedirectionClient-Qt
+TARGET = Input-Redirection-Gyro-Edition
 TEMPLATE = app
 
 # The following define makes your compiler emit warnings if you use
