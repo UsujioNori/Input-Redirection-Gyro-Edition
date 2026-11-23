@@ -6,7 +6,7 @@
 
 QT       += core gui network gamepad
 
-unix:!macx {
+unix|win32-g++ {
     CONFIG += link_pkgconfig
     PKGCONFIG += sdl2
     DEFINES += ENABLE_SDL_PRO3

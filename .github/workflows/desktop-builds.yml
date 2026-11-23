@@ -1,0 +1,93 @@
+name: IRGE desktop builds
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [gyro-edition]
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config qtbase5-dev qt5-qmake libqt5gamepad5-dev libsdl2-dev
+          mkdir build
+          cd build
+          qmake ../InputRedirectionClient-Qt.pro
+          make -j"$(nproc)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IRGE-linux-x86_64
+          path: build/Input-Redirection-Gyro-Edition
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-qt5-base
+            mingw-w64-ucrt-x86_64-qt5-gamepad
+            mingw-w64-ucrt-x86_64-SDL2
+      - name: Build and bundle
+        run: |
+          mkdir build
+          cd build
+          qmake ../InputRedirectionClient-Qt.pro CONFIG+=release CONFIG-=debug_and_release
+          make -j"$(nproc)"
+          mkdir dist
+          exe="$(find . -name Input-Redirection-Gyro-Edition.exe -print -quit)"
+          cp "$exe" dist/
+          windeployqt --release dist/Input-Redirection-Gyro-Edition.exe
+          cp /ucrt64/bin/SDL2.dll dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IRGE-windows-x64
+          path: build/dist/
+          if-no-files-found: error
+
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and bundle
+        run: |
+          brew install qt@5 sdl2 pkgconf
+          qt_bin="$(brew --prefix qt@5)/bin"
+          export PKG_CONFIG_PATH="$(brew --prefix sdl2)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          mkdir build
+          cd build
+          "$qt_bin/qmake" ../InputRedirectionClient-Qt.pro
+          make -j"$(sysctl -n hw.logicalcpu)"
+          app=Input-Redirection-Gyro-Edition.app
+          "$qt_bin/macdeployqt" "$app"
+          ditto -c -k --keepParent "$app" "IRGE-macos-${{ matrix.arch }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IRGE-macos-${{ matrix.arch }}
+          path: build/IRGE-macos-${{ matrix.arch }}.zip
+          if-no-files-found: error
