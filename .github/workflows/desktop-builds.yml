@@ -49,12 +49,12 @@ jobs:
         run: |
           mkdir build
           cd build
-          qmake ../InputRedirectionClient-Qt.pro CONFIG+=release CONFIG-=debug_and_release
+          qmake-qt5 ../InputRedirectionClient-Qt.pro CONFIG+=release CONFIG-=debug_and_release
           make -j"$(nproc)"
           mkdir dist
           exe="$(find . -name Input-Redirection-Gyro-Edition.exe -print -quit)"
           cp "$exe" dist/
-          windeployqt --release dist/Input-Redirection-Gyro-Edition.exe
+          windeployqt-qt5 --release dist/Input-Redirection-Gyro-Edition.exe
           cp /ucrt64/bin/SDL2.dll dist/
       - uses: actions/upload-artifact@v4
         with:
