@@ -14,6 +14,7 @@
 #include <QCheckBox>
 #include <QDialog>
 #include <QSettings>
+#include <atomic>
 #include <QMouseEvent>
 #include <QCloseEvent>
 #include <QFileDialog>
@@ -58,6 +59,7 @@ extern QGamepadManager::GamepadButtons buttons;
 extern u32 interfaceButtons;
 
 extern int yAxisMultiplier, yAxisMultiplierCpp;
+extern std::atomic<bool> rotateNew3dsCStick;
 
 extern QString ipAddress;
 extern bool timerEnabled;

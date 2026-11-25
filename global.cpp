@@ -17,6 +17,7 @@ std::vector<ShortCut> listShortcuts;
 QGamepadManager::GamepadButtons buttons = 0;
 u32 interfaceButtons = 0;
 int yAxisMultiplier = 1, yAxisMultiplierCpp = 1;
+std::atomic<bool> rotateNew3dsCStick{settings.value("rotateNew3dsCStick", false).toBool()};
 bool shouldSwapStick = false;
 int CPAD_BOUND = (settings.contains("StickBound") ? settings.value("StickBound").toInt() : 1488);
 int CPP_BOUND = (settings.contains("CppBound") ? settings.value("CppBound").toInt() : 127);
@@ -197,11 +198,19 @@ void Worker::sendFrame(void)
 
       if(cppAxis.x != 0.0 || cppAxis.y != 0.0 || irButtonsState != 0)
       {
-          // Direct axis mapping: bypass the original 45-degree CPP rotation.
-          u32 x = (u32)(cppAxis.x * CPP_BOUND + 0x80);
-          u32 y = (u32)(cppAxis.y * CPP_BOUND + 0x80);
-          x = x >= 0xff ? (cppAxis.x < 0.0 ? 0x00 : 0xff) : x;
-          y = y >= 0xff ? (cppAxis.y < 0.0 ? 0x00 : 0xff) : y;
+          if (rotateNew3dsCStick.load(std::memory_order_relaxed))
+          {
+              constexpr double invSqrt2 = 0.7071067811865476;
+              const double x = cppAxis.x;
+              cppAxis.x = (x + cppAxis.y) * invSqrt2;
+              cppAxis.y = (cppAxis.y - x) * invSqrt2;
+          }
+
+          const auto packAxis = [](double axis) -> u32 {
+              return static_cast<u32>(std::max(0.0, std::min(255.0, axis * CPP_BOUND + 128.0)));
+          };
+          const u32 x = packAxis(cppAxis.x);
+          const u32 y = packAxis(cppAxis.y);
 
           cppState = (y << 24) | (x << 16) | (irButtonsState << 8) | 0x81;
       }

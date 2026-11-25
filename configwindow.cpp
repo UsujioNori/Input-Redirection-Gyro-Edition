@@ -109,6 +109,15 @@ ConfigWindow::ConfigWindow(QWidget *parent, TouchScreen *ts) : QDialog(parent)
     layout->addWidget(rsSmashCheckbox, 20, 1);
     layout->addWidget(new QLabel("RS as ABXY"), 19, 2);
     layout->addWidget(rsFaceButtonsCheckbox, 19, 3);
+    auto *rotateCStick = new QCheckBox(this);
+    rotateCStick->setChecked(rotateNew3dsCStick.load(std::memory_order_relaxed));
+    layout->addWidget(new QLabel(tr("New 3DS C-stick")), 20, 2);
+    layout->addWidget(rotateCStick, 20, 3);
+    connect(saveButton, &QPushButton::pressed, this, [rotateCStick] {
+        const bool enabled = rotateCStick->isChecked();
+        rotateNew3dsCStick.store(enabled, std::memory_order_relaxed);
+        settings.setValue("rotateNew3dsCStick", enabled);
+    });
 
     layout->addWidget(saveButton, 21, 1, 1, 2);
 
