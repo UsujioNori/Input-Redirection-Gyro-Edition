@@ -18,6 +18,7 @@ QGamepadManager::GamepadButtons buttons = 0;
 u32 interfaceButtons = 0;
 int yAxisMultiplier = 1, yAxisMultiplierCpp = 1;
 std::atomic<bool> rotateNew3dsCStick{settings.value("rotateNew3dsCStick", false).toBool()};
+std::atomic<bool> invertGyroYaw{settings.value("invertGyroYaw", false).toBool()};
 bool shouldSwapStick = false;
 int CPAD_BOUND = (settings.contains("StickBound") ? settings.value("StickBound").toInt() : 1488);
 int CPP_BOUND = (settings.contains("CppBound") ? settings.value("CppBound").toInt() : 127);
@@ -290,6 +291,9 @@ void Worker::sendFrame(void)
               }
               pro3.gyroX = pro3.gyroY = pro3.gyroZ = 0;
           }
+          // SDL yaw is packed as the HID gyro Z axis.
+          if (invertGyroYaw.load(std::memory_order_relaxed))
+              pro3.gyroZ = -pro3.gyroZ;
           if (accelMode == "coherent")
               gravity.update(pro3, motionTime);
           ba.resize(pro3.hasAccel ? 40 : 32);

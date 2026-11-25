@@ -119,7 +119,16 @@ ConfigWindow::ConfigWindow(QWidget *parent, TouchScreen *ts) : QDialog(parent)
         settings.setValue("rotateNew3dsCStick", enabled);
     });
 
-    layout->addWidget(saveButton, 21, 1, 1, 2);
+    auto *invertYaw = new QCheckBox(tr("Invert gyro left/right"), this);
+    invertYaw->setChecked(invertGyroYaw.load(std::memory_order_relaxed));
+    layout->addWidget(invertYaw, 21, 0, 1, 4);
+    connect(saveButton, &QPushButton::pressed, this, [invertYaw] {
+        const bool enabled = invertYaw->isChecked();
+        invertGyroYaw.store(enabled, std::memory_order_relaxed);
+        settings.setValue("invertGyroYaw", enabled);
+    });
+
+    layout->addWidget(saveButton, 22, 1, 1, 2);
 
     connect(invertYCheckbox, &QCheckBox::stateChanged, this,
             [](int state)
@@ -383,7 +392,7 @@ void ConfigWindow::refreshControllerBindings()
                 binding->addItem(QString::fromLatin1(labels[bit]), 1u << bit);
             binding->setCurrentIndex(qMax(0, binding->findData(settings.value(key, 0u))));
             auto *caption = new QLabel(label, this);
-            const int row = 21 + visibleCount / 2;
+            const int row = 22 + visibleCount / 2;
             const int column = (visibleCount % 2) * 2;
             layout->addWidget(caption, row, column);
             layout->addWidget(binding, row, column + 1);
@@ -397,6 +406,6 @@ void ConfigWindow::refreshControllerBindings()
     }
 #endif
     layout->removeWidget(saveButton);
-    layout->addWidget(saveButton, 21 + (visibleCount + 1) / 2, 1, 1, 2);
+    layout->addWidget(saveButton, 22 + (visibleCount + 1) / 2, 1, 1, 2);
     adjustSize();
 }

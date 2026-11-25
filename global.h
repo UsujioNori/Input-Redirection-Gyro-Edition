@@ -60,6 +60,7 @@ extern u32 interfaceButtons;
 
 extern int yAxisMultiplier, yAxisMultiplierCpp;
 extern std::atomic<bool> rotateNew3dsCStick;
+extern std::atomic<bool> invertGyroYaw;
 
 extern QString ipAddress;
 extern bool timerEnabled;
